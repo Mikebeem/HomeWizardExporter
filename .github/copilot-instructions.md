@@ -1,12 +1,13 @@
 # Copilot Instructions for HomeWizardExporter
 
 ## Project Overview
-This is the HomeWizardExporter project, which appears to be focused on exporting data from HomeWizard devices.
+HomeWizardExporter is a tool for exporting data from HomeWizard devices.
 
 ## Code Style and Conventions
-- Follow standard coding practices for the project's primary language
-- Maintain consistency with existing code patterns
-- Write clear, self-documenting code with appropriate comments
+- Follow the language-specific style guide for the primary language used in the project
+- Maintain consistency with existing code patterns and formatting
+- Write clear, self-documenting code with appropriate comments where complexity requires explanation
+- Use established linting tools and configurations if present in the project
 
 ## Development Workflow
 - Make minimal, focused changes that address specific issues
