@@ -162,33 +162,72 @@ class DatabaseManager:
             return False
             
     def get_yearly_consumption(self, year):
-        """Get yearly consumption statistics"""
+        """Get yearly consumption statistics.
+
+        This implementation is resilient to counter resets and data gaps by
+        summing only positive deltas between consecutive measurements.
+        """
         try:
             cursor = self.connection.cursor()
-            
+
             cursor.execute("""
-                SELECT 
-                    MIN(total_imported) as start_imported,
-                    MAX(total_imported) as end_imported,
-                    MIN(total_exported) as start_exported,
-                    MAX(total_exported) as end_exported,
-                    MIN(gas_total_m3) as start_gas,
-                    MAX(gas_total_m3) as end_gas
+                SELECT
+                    timestamp,
+                    total_imported,
+                    total_exported,
+                    gas_total_m3
                 FROM measurements
                 WHERE EXTRACT(YEAR FROM timestamp) = %s
+                ORDER BY timestamp
             """, (year,))
-            
-            result = cursor.fetchone()
+
+            rows = cursor.fetchall()
             cursor.close()
-            
-            if result and result[0] is not None:
-                return {
-                    'year': year,
-                    'electricity_consumed_kwh': round((result[1] or 0) - (result[0] or 0), 2),
-                    'electricity_produced_kwh': round((result[3] or 0) - (result[2] or 0), 2),
-                    'gas_consumed_m3': round((result[5] or 0) - (result[4] or 0), 2)
-                }
-            return None
+
+            # No data for this year
+            if not rows:
+                return None
+
+            electricity_consumed = 0.0
+            electricity_produced = 0.0
+            gas_consumed = 0.0
+
+            # Initialize with the first row's values
+            _, prev_imported, prev_exported, prev_gas = rows[0]
+
+            # Walk through consecutive measurements and sum positive deltas
+            for row in rows[1:]:
+                _, curr_imported, curr_exported, curr_gas = row
+
+                if (
+                    prev_imported is not None
+                    and curr_imported is not None
+                    and curr_imported >= prev_imported
+                ):
+                    electricity_consumed += float(curr_imported) - float(prev_imported)
+
+                if (
+                    prev_exported is not None
+                    and curr_exported is not None
+                    and curr_exported >= prev_exported
+                ):
+                    electricity_produced += float(curr_exported) - float(prev_exported)
+
+                if (
+                    prev_gas is not None
+                    and curr_gas is not None
+                    and curr_gas >= prev_gas
+                ):
+                    gas_consumed += float(curr_gas) - float(prev_gas)
+
+                prev_imported, prev_exported, prev_gas = curr_imported, curr_exported, curr_gas
+
+            return {
+                'year': year,
+                'electricity_consumed_kwh': round(electricity_consumed, 2),
+                'electricity_produced_kwh': round(electricity_produced, 2),
+                'gas_consumed_m3': round(gas_consumed, 2),
+            }
         except psycopg2.Error as e:
             logger.error(f"Error getting yearly consumption: {e}")
             return None
