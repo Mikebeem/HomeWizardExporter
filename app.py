@@ -323,8 +323,14 @@ class HomeWizardExporter:
         # Run scheduler
         try:
             while True:
+                idle = schedule.idle_seconds()
+                if idle is None:
+                    # No jobs scheduled; sleep for a default interval
+                    time.sleep(1)
+                elif idle > 0:
+                    # Sleep until the next scheduled job is due
+                    time.sleep(idle)
                 schedule.run_pending()
-                time.sleep(1)
         except KeyboardInterrupt:
             logger.info("Shutting down...")
         finally:
