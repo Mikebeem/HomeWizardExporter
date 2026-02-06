@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:15-alpine
+    container_name: homewizard_db
+    environment:
+      POSTGRES_DB: homewizard
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: changeme
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # HomeWizard Exporter Application
+  exporter:
+    build: .
+    container_name: homewizard_exporter
+    environment:
+      # HomeWizard P1 Meter IP address (CHANGE THIS!)
+      HOMEWIZARD_HOST: 192.168.1.100
+      # Database connection
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: homewizard
+      DB_USER: postgres
+      DB_PASSWORD: changeme
+      # Poll interval in seconds (default: 30)
+      POLL_INTERVAL: 30
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
