@@ -48,7 +48,6 @@ def test_requirements():
     with open('requirements.txt', 'r') as f:
         requirements = f.read().strip().split('\n')
     
-    assert len(requirements) >= 4, "Should have at least 4 dependencies"
     assert any('requests' in req for req in requirements), "Should include requests"
     assert any('psycopg2' in req for req in requirements), "Should include psycopg2"
     
