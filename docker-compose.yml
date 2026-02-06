@@ -8,6 +8,7 @@ services:
     environment:
       POSTGRES_DB: homewizard
       POSTGRES_USER: postgres
+      # IMPORTANT: Change this password for production use!
       POSTGRES_PASSWORD: changeme
     volumes:
       - postgres_data:/var/lib/postgresql/data
@@ -32,6 +33,7 @@ services:
       DB_PORT: 5432
       DB_NAME: homewizard
       DB_USER: postgres
+      # IMPORTANT: Change this to match the database password!
       DB_PASSWORD: changeme
       # Poll interval in seconds (default: 30)
       POLL_INTERVAL: 30

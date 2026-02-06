@@ -7,7 +7,8 @@ Een Docker-gebaseerde applicatie die data exporteert van een HomeWizard P1 meter
 - ✅ Data exporteren van HomeWizard P1 meter via lokale API
 - ✅ Opslaan van metingen in PostgreSQL database op je NAS
 - ✅ Automatische data-verzameling (standaard elke 30 seconden)
-- ✅ Genereren van jaar- en maandoverzichten
+- ✅ Automatische dagelijkse rapporten (elke dag om middernacht)
+- ✅ Genereren van jaar- en maandoverzichten op verzoek
 - ✅ Export van rapporten naar JSON en CSV
 - ✅ Docker & Docker Compose support voor eenvoudige installatie
 - ✅ Persistente data opslag met volumes
@@ -59,6 +60,10 @@ docker-compose up -d
 Dit start twee containers:
 - `homewizard_db`: PostgreSQL database
 - `homewizard_exporter`: De export applicatie
+
+De applicatie zal automatisch:
+- Elke 30 seconden (configureerbaar) data ophalen van je meter
+- Elke dag om middernacht een rapport genereren (te zien in de logs)
 
 ### 4. Controleer de logs
 
