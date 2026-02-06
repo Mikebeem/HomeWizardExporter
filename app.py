@@ -13,7 +13,6 @@ import logging
 from datetime import datetime
 import requests
 import psycopg2
-from psycopg2 import sql
 import schedule
 
 # Configure logging
@@ -31,15 +30,20 @@ class HomeWizardClient:
         self.host = host
         self.api_url = f"http://{host}/api/v1/data"
         
-    def get_data(self):
-        """Fetch current data from the HomeWizard P1 meter"""
-        try:
-            response = requests.get(self.api_url, timeout=5)
-            response.raise_for_status()
-            return response.json()
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Error fetching data from HomeWizard: {e}")
-            return None
+    def get_data(self, max_retries=3):
+        """Fetch current data from the HomeWizard P1 meter with retry logic"""
+        for attempt in range(max_retries):
+            try:
+                response = requests.get(self.api_url, timeout=5)
+                response.raise_for_status()
+                return response.json()
+            except requests.exceptions.RequestException as e:
+                if attempt < max_retries - 1:
+                    logger.warning(f"Error fetching data from HomeWizard (attempt {attempt + 1}/{max_retries}): {e}")
+                    time.sleep(2 ** attempt)  # Exponential backoff
+                else:
+                    logger.error(f"Error fetching data from HomeWizard after {max_retries} attempts: {e}")
+                    return None
 
 
 class DatabaseManager:
@@ -72,6 +76,7 @@ class DatabaseManager:
             
     def init_schema(self):
         """Initialize database schema"""
+        cursor = None
         try:
             cursor = self.connection.cursor()
             
@@ -103,15 +108,18 @@ class DatabaseManager:
             """)
             
             self.connection.commit()
-            cursor.close()
             logger.info("Database schema initialized")
         except psycopg2.Error as e:
             logger.error(f"Error initializing schema: {e}")
             self.connection.rollback()
             raise
+        finally:
+            if cursor:
+                cursor.close()
             
     def store_measurement(self, data):
         """Store a measurement in the database"""
+        cursor = None
         try:
             cursor = self.connection.cursor()
             
@@ -124,8 +132,8 @@ class DatabaseManager:
             if gas.get('timestamp'):
                 try:
                     gas_timestamp = datetime.fromisoformat(gas['timestamp'].replace('Z', '+00:00'))
-                except ValueError:
-                    pass
+                except ValueError as e:
+                    logger.warning("Failed to parse gas timestamp '%s': %s", gas.get('timestamp'), e)
             
             cursor.execute("""
                 INSERT INTO measurements (
@@ -153,23 +161,26 @@ class DatabaseManager:
             ))
             
             self.connection.commit()
-            cursor.close()
             logger.debug("Measurement stored successfully")
             return True
         except psycopg2.Error as e:
             logger.error(f"Error storing measurement: {e}")
             self.connection.rollback()
             return False
+        finally:
+            if cursor:
+                cursor.close()
             
     def get_yearly_consumption(self, year):
         """Get yearly consumption statistics.
-
+        
         This implementation is resilient to counter resets and data gaps by
         summing only positive deltas between consecutive measurements.
         """
+        cursor = None
         try:
             cursor = self.connection.cursor()
-
+            
             cursor.execute("""
                 SELECT
                     timestamp,
@@ -180,48 +191,47 @@ class DatabaseManager:
                 WHERE EXTRACT(YEAR FROM timestamp) = %s
                 ORDER BY timestamp
             """, (year,))
-
+            
             rows = cursor.fetchall()
-            cursor.close()
-
+            
             # No data for this year
             if not rows:
                 return None
-
+            
             electricity_consumed = 0.0
             electricity_produced = 0.0
             gas_consumed = 0.0
-
+            
             # Initialize with the first row's values
             _, prev_imported, prev_exported, prev_gas = rows[0]
-
+            
             # Walk through consecutive measurements and sum positive deltas
             for row in rows[1:]:
                 _, curr_imported, curr_exported, curr_gas = row
-
+                
                 if (
                     prev_imported is not None
                     and curr_imported is not None
                     and curr_imported >= prev_imported
                 ):
                     electricity_consumed += float(curr_imported) - float(prev_imported)
-
+                
                 if (
                     prev_exported is not None
                     and curr_exported is not None
                     and curr_exported >= prev_exported
                 ):
                     electricity_produced += float(curr_exported) - float(prev_exported)
-
+                
                 if (
                     prev_gas is not None
                     and curr_gas is not None
                     and curr_gas >= prev_gas
                 ):
                     gas_consumed += float(curr_gas) - float(prev_gas)
-
+                
                 prev_imported, prev_exported, prev_gas = curr_imported, curr_exported, curr_gas
-
+            
             return {
                 'year': year,
                 'electricity_consumed_kwh': round(electricity_consumed, 2),
@@ -231,6 +241,9 @@ class DatabaseManager:
         except psycopg2.Error as e:
             logger.error(f"Error getting yearly consumption: {e}")
             return None
+        finally:
+            if cursor:
+                cursor.close()
 
 
 class HomeWizardExporter:
@@ -244,7 +257,17 @@ class HomeWizardExporter:
         self.db_name = os.getenv('DB_NAME', 'homewizard')
         self.db_user = os.getenv('DB_USER', 'postgres')
         self.db_password = os.getenv('DB_PASSWORD', 'postgres')
-        self.poll_interval = int(os.getenv('POLL_INTERVAL', '30'))
+        
+        # Validate POLL_INTERVAL
+        poll_interval_str = os.getenv('POLL_INTERVAL', '30')
+        try:
+            self.poll_interval = int(poll_interval_str)
+        except ValueError:
+            logger.warning(
+                "Invalid POLL_INTERVAL value '%s'; falling back to default of 30 seconds",
+                poll_interval_str,
+            )
+            self.poll_interval = 30
         
         if not self.hw_host:
             logger.error("HOMEWIZARD_HOST environment variable is required")
@@ -329,7 +352,7 @@ class HomeWizardExporter:
                     time.sleep(1)
                 elif idle > 0:
                     # Sleep until the next scheduled job is due
-                    time.sleep(idle)
+                    time.sleep(min(idle, 1))
                 schedule.run_pending()
         except KeyboardInterrupt:
             logger.info("Shutting down...")

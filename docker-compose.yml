@@ -1,15 +1,13 @@
-version: '3.8'
-
 services:
   # PostgreSQL Database
   db:
     image: postgres:15-alpine
     container_name: homewizard_db
     environment:
-      POSTGRES_DB: homewizard
-      POSTGRES_USER: postgres
-      # IMPORTANT: Change this password for production use!
-      POSTGRES_PASSWORD: changeme
+      POSTGRES_DB: ${POSTGRES_DB:-homewizard}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      # Database password - MUST be set via environment variable or .env file
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Database password must be set via POSTGRES_PASSWORD environment variable}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -24,17 +22,16 @@ services:
     build: .
     container_name: homewizard_exporter
     environment:
-      # HomeWizard P1 Meter IP address (CHANGE THIS!)
-      HOMEWIZARD_HOST: 192.168.1.100
+      # HomeWizard P1 Meter IP address - MUST be set via environment variable or .env file
+      HOMEWIZARD_HOST: ${HOMEWIZARD_HOST:?HomeWizard meter IP address must be set via HOMEWIZARD_HOST environment variable}
       # Database connection
       DB_HOST: db
       DB_PORT: 5432
-      DB_NAME: homewizard
-      DB_USER: postgres
-      # IMPORTANT: Change this to match the database password!
-      DB_PASSWORD: changeme
+      DB_NAME: ${POSTGRES_DB:-homewizard}
+      DB_USER: ${POSTGRES_USER:-postgres}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?Database password must be set via POSTGRES_PASSWORD environment variable}
       # Poll interval in seconds (default: 30)
-      POLL_INTERVAL: 30
+      POLL_INTERVAL: ${POLL_INTERVAL:-30}
     depends_on:
       db:
         condition: service_healthy

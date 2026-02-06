@@ -30,6 +30,8 @@ cd HomeWizardExporter
 
 ### 2. Configuratie
 
+**Belangrijk**: Je **moet** een `.env` bestand aanmaken met je eigen instellingen voordat je de applicatie kunt starten.
+
 Kopieer het voorbeeld configuratie bestand:
 
 ```bash
@@ -39,17 +41,21 @@ cp .env.example .env
 Pas de `.env` aan met je eigen instellingen:
 
 ```env
-# Wijzig dit naar het IP-adres van je HomeWizard P1 meter
+# VERPLICHT: Wijzig dit naar het IP-adres van je HomeWizard P1 meter
 HOMEWIZARD_HOST=192.168.1.100
 
-# Database wachtwoord (wijzig voor productie!)
-DB_PASSWORD=jouw_veilig_wachtwoord
+# VERPLICHT: Stel een sterk wachtwoord in voor de database
+POSTGRES_PASSWORD=jouw_veilig_wachtwoord_hier
 
-# Poll interval in seconden (optioneel)
+# Optioneel: Database naam en gebruiker (standaard waarden zijn prima)
+POSTGRES_DB=homewizard
+POSTGRES_USER=postgres
+
+# Optioneel: Poll interval in seconden (standaard: 30)
 POLL_INTERVAL=30
 ```
 
-Je kunt ook de `docker-compose.yml` direct bewerken.
+**Let op**: De applicatie zal niet starten zonder een correct geconfigureerd `.env` bestand!
 
 ### 3. Start de applicatie
 
@@ -120,8 +126,9 @@ docker-compose exec exporter python generate_report.py --year 2024 --monthly --f
 
 ## Database Toegang
 
-Je kunt direct toegang krijgen tot de database:
+De database is alleen toegankelijk binnen het Docker netwerk voor extra beveiliging. Er is geen externe poort geopend.
 
+### Via psql
 ```bash
 docker-compose exec db psql -U postgres -d homewizard
 ```
@@ -165,17 +172,34 @@ LIMIT 7;
 
 ## Datamodel
 
-De applicatie slaat de volgende gegevens op:
+De applicatie slaat de volgende gegevens op in de `measurements` tabel:
 
-- **Timestamp**: Tijdstip van de meting
+```sql
+CREATE TABLE measurements (
+    id SERIAL PRIMARY KEY,
+    timestamp TIMESTAMP NOT NULL UNIQUE,
+    power_consumed REAL,
+    power_produced REAL,
+    total_imported REAL,  -- Cumulatief kWh
+    total_exported REAL,  -- Cumulatief kWh
+    gas_timestamp TIMESTAMP,
+    gas_total_m3 REAL,    -- Cumulatief m³
+    voltage_l1/l2/l3 REAL,
+    current_l1/l2/l3 REAL
+);
+```
+
+- **Timestamp**: Tijdstip van de meting (unieke index)
 - **Elektriciteit**:
   - Huidig verbruik/productie (W)
-  - Totaal geïmporteerd/geëxporteerd (kWh)
+  - Totaal geïmporteerd/geëxporteerd (kWh, cumulatief)
   - Spanning per fase (V)
   - Stroom per fase (A)
 - **Gas**:
-  - Totaal verbruik (m³)
+  - Totaal verbruik (m³, cumulatief)
   - Timestamp van gasmeting
+
+**Belangrijk**: Verbruiksrapporten worden berekend door positieve delta's tussen opeenvolgende metingen op te tellen. Dit handelt counter resets en data gaps correct af.
 
 ## Onderhoud
 

@@ -7,9 +7,10 @@
 git clone https://github.com/Mikebeem/HomeWizardExporter.git
 cd HomeWizardExporter
 
-# 2. Configureer (wijzig IP-adres en wachtwoord!)
+# 2. Configureer (VERPLICHT: wijzig IP-adres en wachtwoord!)
 cp .env.example .env
 nano .env  # of vi, vim, etc.
+# Stel minimaal HOMEWIZARD_HOST en POSTGRES_PASSWORD in!
 
 # 3. Start de applicatie
 docker-compose up -d
